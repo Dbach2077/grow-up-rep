@@ -1,9 +1,10 @@
 from django.db import models
 
-FULL_NAME_MAX_LENGTH = 255
-LOCATION_MAX_LENGTH = 255
-PHONE_MAX_LENGTH = 20
-
+from .constants import (
+    FULL_NAME_MAX_LENGTH,
+    LOCATION_MAX_LENGTH,
+    PHONE_MAX_LENGTH
+)
 
 class BaseShipment(models.Model):
     sender_full_name = models.CharField(
