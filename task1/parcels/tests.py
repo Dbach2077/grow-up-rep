@@ -12,6 +12,9 @@ class ShipmentAPITests(APITestCase):
         """
         Предустановка начальных данных
         """
+        self.letter_list_url = reverse('letter-list')
+        self.parcel_list_url = reverse('parcel-list')
+
         self.letter_to_create_data = {
             "sender_full_name": "Бачурин Даниил Юрьевич",
             "recipient_full_name": "Дачурин Баниил Вучич",
@@ -45,99 +48,94 @@ class ShipmentAPITests(APITestCase):
             weight_kg="0.100"
         )
 
-    # Тесты писем
+        self.letter_detail_url = reverse('letter-detail', kwargs={'pk': self.existing_letter.pk})
+
     def test_create_letter_success(self):
         """
-        Тест: Успешное создание письма (POST /api/v1/letters/).
+        Тест: Успешное создание письма (POST /api/v1/letters).
         """
-        url = reverse('letter-list')
-        response = self.client.post(url, self.letter_to_create_data, format='json')
+        response = self.client.post(self.letter_list_url, self.letter_to_create_data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(Letter.objects.count(), 2)
-        # Проверяем, что создался объект с правильным именем
         self.assertEqual(response.data['sender_full_name'], "Бачурин Даниил Юрьевич")
+        self.assertEqual(response.data['letter_type'], Letter.LetterType.REGISTERED)
+
 
     def test_create_letter_invalid_data(self):
         """
         Тест: Неудачное создание письма с невалидными данными.
-        Проверяем кастомную валидацию.
         """
-        url = reverse('letter-list')
         invalid_data = self.letter_to_create_data.copy()
         invalid_data['origin_postcode'] = invalid_data['destination_postcode']
 
-        response = self.client.post(url, invalid_data, format='json')
+        response = self.client.post(self.letter_list_url, invalid_data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('details', response.data)
 
+
     def test_get_letter_list(self):
         """
-        Тест: Получение списка всех писем (GET /api/v1/letters/).
+        Тест: Получение списка всех писем (GET /api/v1/letters).
         """
-        url = reverse('letter-list')
-        response = self.client.get(url, format='json')
+        response = self.client.get(self.letter_list_url, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
-        # Проверяем кастомизацию вывода в сериализаторе
-        self.assertEqual(response.data[0]['letter_type'], 'письмо') # Тип для existing_letter
+        self.assertEqual(response.data[0]['letter_type_display'], 'письмо')
+
 
     def test_get_single_letter(self):
         """
-        Тест: Получение одного письма по ID (GET /api/v1/letters/{id}/).
+        Тест: Получение одного письма по ID (GET /api/v1/letters/{id}).
         """
-        url = reverse('letter-detail', kwargs={'pk': self.existing_letter.pk})
-        response = self.client.get(url, format='json')
+        response = self.client.get(self.letter_detail_url, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['id'], self.existing_letter.pk)
 
+
     def test_get_non_existent_letter(self):
         """
         Тест: Попытка получения несуществующего письма.
-        Проверяем кастомную обработку 404 ошибки.
         """
         url = reverse('letter-detail', kwargs={'pk': 999})
         response = self.client.get(url, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-        # ключ DRF для ошибки 404 - 'detail'
         self.assertIn('detail', response.data)
+
 
     def test_delete_letter(self):
         """
-        Тест: Удаление письма (DELETE /api/v1/letters/{id}/).
+        Тест: Удаление письма (DELETE /api/v1/letters/{id}).
         """
-        url = reverse('letter-detail', kwargs={'pk': self.existing_letter.pk})
-        response = self.client.delete(url)
+        response = self.client.delete(self.letter_detail_url)
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertEqual(Letter.objects.count(), 0)
 
-    # Тесты псылок
     def test_create_parcel_success(self):
         """
-        Тест: Успешное создание посылки (POST /api/v1/parcels/).
+        Тест: Успешное создание посылки (POST /api/v1/parcels).
         """
-        url = reverse('parcel-list')
-        response = self.client.post(url, self.parcel_data, format='json')
+        response = self.client.post(self.parcel_list_url, self.parcel_data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(Parcel.objects.count(), 1)
         self.assertEqual(response.data['notification_phone'], "+79991234567")
-        self.assertEqual(response.data['parcel_type'], 'посылка 1 класса')
+        self.assertEqual(response.data['parcel_type_display'], 'посылка 1 класса')
+
 
     def test_create_parcel_invalid_data(self):
         """
         Тест: Неудачное создание посылки с невалидными данными.
         """
-        url = reverse('parcel-list')
         invalid_data = self.parcel_data.copy()
         invalid_data['destination_location'] = invalid_data['origin_location'].lower()
 
-        response = self.client.post(url, invalid_data, format='json')
+        response = self.client.post(self.parcel_list_url, invalid_data, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('details', response.data)
