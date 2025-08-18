@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Post Service</title>
+    <style type="text/css">
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+    </style>
+    <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/extjs/6.2.0/classic/theme-triton/resources/theme-triton-all.css">
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/extjs/6.2.0/ext-all.js"></script>
+    <script type="text/javascript">
+        Ext.onReady(function() {
+            Ext.define('Post.model.Letter', {
+                extend: 'Ext.data.Model',
+                fields: [ 'id', 'sender_full_name', 'recipient_full_name', 'origin_location', 'destination_location', 'origin_postcode', 'destination_postcode', 'letter_type', 'letter_type_display', 'weight_kg', { name: 'created_at', type: 'date', dateFormat: 'c' }, { name: 'updated_at', type: 'date', dateFormat: 'c' } ]
+            });
+
+            Ext.define('Post.model.Parcel', {
+                extend: 'Ext.data.Model',
+                fields: [ 'id', 'sender_full_name', 'recipient_full_name', 'origin_location', 'destination_location', 'origin_postcode', 'destination_postcode', 'notification_phone', 'parcel_type', 'parcel_type_display', 'payment_amount', { name: 'created_at', type: 'date', dateFormat: 'c' }, { name: 'updated_at', type: 'date', dateFormat: 'c' } ]
+            });
+
+            var lettersStore = Ext.create('Ext.data.Store', {
+                model: 'Post.model.Letter',
+                autoLoad: true,
+                proxy: { type: 'rest', url: '/api/v1/letters', reader: { type: 'json' }, writer: { type: 'json', writeAllFields: true } }
+            });
+
+            var parcelsStore = Ext.create('Ext.data.Store', {
+                model: 'Post.model.Parcel',
+                autoLoad: true,
+                proxy: { type: 'rest', url: '/api/v1/parcels', reader: { type: 'json' }, writer: { type: 'json', writeAllFields: true } }
+            });
+
+            function createShipmentWindow(grid, record) {
+                var isEdit = !!record;
+                var store = grid.getStore();
+                var modelName = store.getModel().$className.split('.').pop();
+
+                var form = Ext.create('Ext.form.Panel', {
+                    bodyPadding: 10,
+                    defaultType: 'textfield',
+                    items: [
+                        { name: 'sender_full_name', fieldLabel: 'ФИО отправителя', allowBlank: false },
+                        { name: 'recipient_full_name', fieldLabel: 'ФИО получателя', allowBlank: false },
+                        { name: 'origin_location', fieldLabel: 'Пункт отправки', allowBlank: false },
+                        { name: 'destination_location', fieldLabel: 'Пункт получения', allowBlank: false },
+                        { name: 'origin_postcode', fieldLabel: 'Индекс отправки', xtype: 'numberfield', allowBlank: false },
+                        { name: 'destination_postcode', fieldLabel: 'Индекс получения', xtype: 'numberfield', allowBlank: false },
+                        ...(modelName === 'Letter' ? [
+                            {
+                                name: 'letter_type', fieldLabel: 'Тип письма', xtype: 'combo',
+                                store: [[1, 'письмо'], [2, 'заказное письмо'], [3, 'ценное письмо'], [4, 'экспресс-письмо']],
+                                value: 1, forceSelection: true, allowBlank: false
+                            },
+                            { name: 'weight_kg', fieldLabel: 'Вес (кг)', xtype: 'numberfield', decimalPrecision: 3, allowBlank: false }
+                        ] : [
+                            { name: 'notification_phone', fieldLabel: 'Телефон', allowBlank: false },
+                            {
+                                name: 'parcel_type', fieldLabel: 'Тип посылки', xtype: 'combo',
+                                store: [[1, 'мелкий пакет'], [2, 'посылка'], [3, 'посылка 1 класса'], [4, 'ценная посылка'], [5, 'посылка международная'], [6, 'экспресс-посылка']],
+                                value: 2, forceSelection: true, allowBlank: false
+                            },
+                            { name: 'payment_amount', fieldLabel: 'Сумма платежа', xtype: 'numberfield', decimalPrecision: 2, allowBlank: false }
+                        ])
+                    ]
+                });
+
+                var win = Ext.create('Ext.window.Window', {
+                    title: isEdit ? 'Редактировать запись' : 'Добавить запись',
+                    modal: true, width: 400, layout: 'fit', items: [form],
+                    buttons: [{
+                        text: 'Сохранить',
+                        handler: function() {
+                            if (form.isValid()) {
+                                var values = form.getValues();
+                                if (isEdit) { record.set(values); } else { store.add(values); }
+                                store.sync({
+                                    success: function() { Ext.toast('Успешно сохранено!'); win.close(); },
+                                    failure: function(batch) {
+                                        var error = batch.exceptions[0].getError().response.responseText;
+                                        Ext.Msg.alert('Ошибка', 'Не удалось сохранить запись. <br/>' + error);
+                                        store.rejectChanges();
+                                    }
+                                });
+                            }
+                        }
+                    }, { text: 'Отмена', handler: function() { win.close(); } }]
+                });
+
+                if (isEdit) { form.loadRecord(record); }
+                win.show();
+            }
+
+            var lettersGrid = Ext.create('Ext.grid.Panel', {
+                title: 'Письма', store: lettersStore,
+                columns: [
+                    { text: 'ID', dataIndex: 'id', width: 50 },
+                    { text: 'Отправитель', dataIndex: 'sender_full_name', flex: 1 },
+                    { text: 'Получатель', dataIndex: 'recipient_full_name', flex: 1 },
+                    { text: 'Тип', dataIndex: 'letter_type_display', width: 150 }, 
+                    { text: 'Создано', dataIndex: 'created_at', xtype: 'datecolumn', format: 'Y-m-d H:i', width: 150 },
+                    {
+                        xtype: 'actioncolumn', width: 60,
+                        items: [{
+                            iconCls: 'x-fa fa-pencil', tooltip: 'Редактировать',
+                            handler: function(grid, rowIndex) { createShipmentWindow(grid, grid.getStore().getAt(rowIndex)); }
+                        }, {
+                            iconCls: 'x-fa fa-trash', tooltip: 'Удалить',
+                            handler: function(grid, rowIndex) {
+                                Ext.Msg.confirm('Подтверждение', 'Вы уверены?', function(btn) {
+                                    if (btn === 'yes') { var store = grid.getStore(); store.removeAt(rowIndex); store.sync(); }
+                                });
+                            }
+                        }]
+                    }
+                ],
+                dockedItems: [{
+                    xtype: 'toolbar', dock: 'top',
+                    items: [
+                        { xtype: 'textfield', emptyText: 'Поиск...', width: 250, listeners: { change: function(f, v) { lettersStore.getProxy().extraParams = { search: v }; lettersStore.load(); } } },
+                        '->',
+                        { text: 'Добавить письмо', handler: function() { createShipmentWindow(lettersGrid); } }
+                    ]
+                }]
+            });
+
+            var parcelsGrid = Ext.create('Ext.grid.Panel', {
+                title: 'Посылки', store: parcelsStore,
+                columns: [
+                    { text: 'ID', dataIndex: 'id', width: 50 },
+                    { text: 'Отправитель', dataIndex: 'sender_full_name', flex: 1 },
+                    { text: 'Телефон', dataIndex: 'notification_phone', flex: 1 },
+                    { text: 'Тип', dataIndex: 'parcel_type_display', width: 150 }, 
+                    { text: 'Создано', dataIndex: 'created_at', xtype: 'datecolumn', format: 'Y-m-d H:i', width: 150 },
+                    {
+                        xtype: 'actioncolumn', width: 60,
+                        items: [{
+                            iconCls: 'x-fa fa-pencil', tooltip: 'Редактировать',
+                            handler: function(grid, rowIndex) { createShipmentWindow(grid, grid.getStore().getAt(rowIndex)); }
+                        }, {
+                            iconCls: 'x-fa fa-trash', tooltip: 'Удалить',
+                            handler: function(grid, rowIndex) {
+                                Ext.Msg.confirm('Подтверждение', 'Вы уверены?', function(btn) {
+                                    if (btn === 'yes') { var store = grid.getStore(); store.removeAt(rowIndex); store.sync(); }
+                                });
+                            }
+                        }]
+                    }
+                ],
+                dockedItems: [{
+                    xtype: 'toolbar', dock: 'top',
+                    items: [
+                        { xtype: 'textfield', emptyText: 'Поиск...', width: 250, listeners: { change: function(f, v) { parcelsStore.getProxy().extraParams = { search: v }; parcelsStore.load(); } } },
+                        '->',
+                        { text: 'Добавить посылку', handler: function() { createShipmentWindow(parcelsGrid); } }
+                    ]
+                }]
+            });
+
+            Ext.create('Ext.tab.Panel', {
+                renderTo: Ext.getBody(),
+                height: '100%',
+                width: '100%',
+                items: [ lettersGrid, parcelsGrid ]
+            });
+        });
+    </script>
+</head>
+<body></body>
+</html>
